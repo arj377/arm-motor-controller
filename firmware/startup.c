@@ -12,23 +12,22 @@ extern void UART0_Handler(void);
 __attribute__((section(".isr_vector")))
 
 // Stores inital SP value and handler addresses
-uintptr_t vectorTable[22]=  {[0] = 0x20010000, 
-                            [1] = (uintptr_t)&Reset_Handler,
-                            [21] = (uintptr_t)&UART0_Handler}; 
+uintptr_t vectorTable[22] = {[0] = 0x20010000, [1] = (uintptr_t)&Reset_Handler, [21] = (uintptr_t)&UART0_Handler};
 
-void Reset_Handler (void) {
-    
-    // Zero in uninitialized variables
-    for (uint32_t *bssPtr = &_sbss; bssPtr < &_ebss; bssPtr++) {
-        *bssPtr = 0;
-    }
+void Reset_Handler(void) {
 
-    uint32_t* flashPtr = &_sidata;
-    for (uint32_t *dataPtr = &_sdata; dataPtr < &_edata; dataPtr++) {
-        *dataPtr = *flashPtr;
-        flashPtr++;
-    }
+  // Zero in uninitialized variables
+  for (uint32_t *bssPtr = &_sbss; bssPtr < &_ebss; bssPtr++) {
+    *bssPtr = 0;
+  }
 
-    main();
-    while(1) {}
+  uint32_t *flashPtr = &_sidata;
+  for (uint32_t *dataPtr = &_sdata; dataPtr < &_edata; dataPtr++) {
+    *dataPtr = *flashPtr;
+    flashPtr++;
+  }
+
+  main();
+  while (1) {
+  }
 }
