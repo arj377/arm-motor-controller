@@ -7,12 +7,17 @@ extern uint32_t _ebss;
 extern uint32_t _sdata;
 extern uint32_t _edata;
 extern uint32_t _sidata;
+extern void UART0_Handler(void);
 
 __attribute__((section(".isr_vector")))
-uintptr_t vectorTable []= {0x20010000, (uintptr_t)&Reset_Handler}; //Addresses are where the SP and PC are read from
+
+// Stores inital SP value and handler addresses
+uintptr_t vectorTable[22]=  {[0] = 0x20010000, 
+                            [1] = (uintptr_t)&Reset_Handler,
+                            [21] = (uintptr_t)&UART0_Handler}; 
 
 void Reset_Handler (void) {
-
+    
     // Zero in uninitialized variables
     for (uint32_t *bssPtr = &_sbss; bssPtr < &_ebss; bssPtr++) {
         *bssPtr = 0;

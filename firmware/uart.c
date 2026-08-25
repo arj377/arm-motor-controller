@@ -7,11 +7,17 @@
 #define UARTFBRD (*(volatile uint32_t *)(UART0_BASE + 0x028)) // Fractional Baud Rate Divisor
 #define UARTLCRH (*(volatile uint32_t *)(UART0_BASE + 0x02C)) // UART data format
 #define UARTCTL (*(volatile uint32_t *)(UART0_BASE + 0x030)) // Enable/Disable UART
+#define UARTIM (*(volatile uint32_t *)(UART0_BASE + 0x038)) // Interrupt Mask Set/Clear Register
+#define UARTMIS (*(volatile uint32_t *)(UART0_BASE + 0x040)) // Masked Interrupt Status Register
+#define UARTICR (*(volatile uint32_t *)(UART0_BASE + 0x044)) // Interrupt Clear Register
 
 #define SYSTEM_CONTROL_BASE 0x400FE000
 #define RCGC1 (*(volatile uint32_t *)(SYSTEM_CONTROL_BASE + 0x104)) // Controls clocks for peripherals
 
-void uart_init() {
+#define NVIC_BASE 0xE000E000
+#define EN0 (*(volatile uint32_t *)(NVIC_BASE + 0x100)) // Interrupts 0-31 Set/Enable
+
+void uart_init(void) {
     RCGC1 |= 1U; // Enable the peripheral clock for UART0
     UARTCTL &= ~1U; // Disable UART
     UARTIBRD = 27; // BRD = system clock / (16 × baud rate)
@@ -22,10 +28,14 @@ void uart_init() {
     UARTLCRH |= (1U << 4); // Enable FIFO
     UARTCTL |= 1U; // Enable UART
     UARTCTL |= (3U << 8); // Enable TX and RX
+
+    UARTIM |= (1U << 4); // Allow RX events to generate an interrupt
+    UARTIM |= (1U << 6); // Enable UART0 RX timeout
+    EN0 |= (1U << 5); // Allow UART0 interrupt 5 through to the CPU
 }
 
 void uart_putc(char c) {
-    while (UARTFR & (1U << 5) != 0) {} // Wait while TX FIFO is full
+    while ((UARTFR & (1U << 5)) != 0) {} // Wait while TX FIFO is full
     UARTDR = c;
 }
 
@@ -34,4 +44,14 @@ void uart_puts(char *s) {
         uart_putc(*s);
         s += 1;
     } 
+}
+
+void UART0_Handler(void) {
+    if ((UARTMIS & (1U << 4)) != 0 || (UARTMIS & (1U << 6)) != 0) { // If RX interrupt or RX-timeout interrupt
+        while ((UARTFR & (1U << 4)) == 0) { // Keep reading until RX FIFO is empty
+            uart_putc(UARTDR);
+        }
+    }
+
+    UARTICR = (1U << 4) | (1U << 6); // Clear interrupts
 }
