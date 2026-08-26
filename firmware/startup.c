@@ -8,11 +8,15 @@ extern uint32_t _sdata;
 extern uint32_t _edata;
 extern uint32_t _sidata;
 extern void UART0_Handler(void);
+extern void Timer0_Handler(void);
 
 __attribute__((section(".isr_vector")))
 
 // Stores inital SP value and handler addresses
-uintptr_t vectorTable[22] = {[0] = 0x20010000, [1] = (uintptr_t)&Reset_Handler, [21] = (uintptr_t)&UART0_Handler};
+uintptr_t vectorTable[36] = {[0] = 0x20010000,
+                             [1] = (uintptr_t)&Reset_Handler,
+                             [21] = (uintptr_t)&UART0_Handler,
+                             [35] = (uintptr_t)&Timer0_Handler};
 
 void Reset_Handler(void) {
 
