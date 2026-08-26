@@ -17,6 +17,12 @@
 #define NVIC_BASE 0xE000E000
 #define EN0 (*(volatile uint32_t *)(NVIC_BASE + 0x100)) // Interrupts 0-31 Set/Enable
 
+#define RX_BUFFER_SIZE 8
+
+// For ring buffer
+uint8_t rx_buffer[RX_BUFFER_SIZE];
+volatile int rx_head = 0, rx_tail = 0;
+
 void uart_init(void) {
   RCGC1 |= 1U;    // Enable the peripheral clock for UART0
   UARTCTL &= ~1U; // Disable UART
@@ -40,6 +46,16 @@ void uart_putc(char c) {
   UARTDR = c;
 }
 
+int uart_getc(void) {
+  if (rx_head == rx_tail) {
+    return -1;
+  } else {
+    uint8_t ret = rx_buffer[rx_tail];
+    rx_tail = (rx_tail + 1) % RX_BUFFER_SIZE;
+    return ret;
+  }
+}
+
 void uart_puts(char *s) {
   while (*s != '\0') {
     uart_putc(*s);
@@ -50,7 +66,12 @@ void uart_puts(char *s) {
 void UART0_Handler(void) {
   if ((UARTMIS & (1U << 4)) != 0 || (UARTMIS & (1U << 6)) != 0) { // If RX interrupt or RX-timeout interrupt
     while ((UARTFR & (1U << 4)) == 0) {                           // Keep reading until RX FIFO is empty
-      uart_putc(UARTDR);
+      int next_head = (rx_head + 1) % RX_BUFFER_SIZE;
+
+      if (next_head != rx_tail) {
+        rx_buffer[rx_head] = UARTDR;
+        rx_head = next_head;
+      }
     }
   }
 
