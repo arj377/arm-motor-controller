@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 
 #define UART0_BASE 0x4000C000
 #define UARTDR (*(volatile uint32_t *)(UART0_BASE + 0x000))   // Data Register
@@ -60,6 +61,38 @@ void uart_puts(char *s) {
   while (*s != '\0') {
     uart_putc(*s);
     s += 1;
+  }
+}
+
+void uart_putint(int num) {
+  bool negative = false;
+  if (num == 0) {
+    uart_putc('0');
+    return;
+  } else if (num < 0) {
+    negative = true;
+    num *= -1;
+  }
+  
+  int temp = num;
+  int counter = 0;
+  while (temp != 0) {
+    temp /= 10;
+    counter++;
+  }
+  int digits[counter];
+
+  temp = num;
+  for (int i = 0; i < counter; i++) {
+    digits[i] = temp % 10;
+    temp /= 10;
+  }
+
+  if (negative) {
+    uart_putc('-');
+  }
+  for (int i = counter - 1; i >= 0; i--) {
+    uart_putc(digits[i] + '0');
   }
 }
 

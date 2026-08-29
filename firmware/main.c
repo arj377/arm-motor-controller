@@ -15,9 +15,13 @@ void control_set_target(int target);
 void control_update(void);
 void motor_model_update(void);
 
+void command_process_char(char c);
+
+void telemetry_print(void);
+
 int main(void) {
-  uint32_t last_print = 0;
   uint32_t last_control = 0;
+  uint32_t last_telemetry = 0;
   
   uart_init();
   timer_init();
@@ -32,16 +36,17 @@ int main(void) {
 
     if (c != -1) {
       uart_putc(c);
+      command_process_char(c);
     }
 
+    if (timer_ticks - last_telemetry >= 5000) { // Adjustable based on demands
+      telemetry_print();
+      last_telemetry += 5000;
+    }
     if (timer_ticks - last_control >= 10) {
       motor_model_update();
       control_update();
       last_control += 10;
-    }
-    if (timer_ticks - last_print >= 1000) {
-      uart_puts("tick\n");
-      last_print += 1000;
     }
   }
 }
