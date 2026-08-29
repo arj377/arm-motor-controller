@@ -11,14 +11,20 @@ int uart_getc(void);
 
 void motor_set_output(int percent);
 
+void control_set_target(int target);
+void control_update(void);
+void motor_model_update(void);
+
 int main(void) {
   uint32_t last_print = 0;
+  uint32_t last_control = 0;
   
   uart_init();
   timer_init();
   motor_init();
 
-  motor_set_output(-50);
+  control_set_target(1500);
+
   uart_puts("Hello");
 
   while (1) {
@@ -28,6 +34,11 @@ int main(void) {
       uart_putc(c);
     }
 
+    if (timer_ticks - last_control >= 10) {
+      motor_model_update();
+      control_update();
+      last_control += 10;
+    }
     if (timer_ticks - last_print >= 1000) {
       uart_puts("tick\n");
       last_print += 1000;
