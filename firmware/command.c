@@ -8,12 +8,15 @@ enum STATE {
 
 void control_set_target(int target);
 
-enum STATE state = WAIT_COMMAND;
-int value = 0;
-bool positive = true;
+static enum STATE state = WAIT_COMMAND;
+static int value = 0;
+static bool positive = true;
 
 void uart_puts(char* c);
 void uart_putint(int num);
+
+void emergency_stop(void);
+void clear_fault(void);
 
 void command_process_char(char c) {
     switch(state) {
@@ -22,6 +25,10 @@ void command_process_char(char c) {
                 value = 0;
                 positive = true;
                 state = WAIT_VALUE;
+            } else if (c == 'x') {
+                emergency_stop();
+            } else if (c == 'c') {
+                clear_fault();
             }
             break;
         case WAIT_VALUE:
@@ -41,9 +48,6 @@ void command_process_char(char c) {
                 if (positive == false) {
                     value *= -1;
                 }
-                uart_puts("\nCOMMAND VALUE = ");
-                uart_putint(value);
-                uart_puts("\n");
 
                 control_set_target(value);
                 state = WAIT_COMMAND;
