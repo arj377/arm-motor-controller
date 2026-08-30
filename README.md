@@ -217,4 +217,4 @@ and:
 
 This project was built to understand what sits underneath embedded frameworks and RTOS abstractions: processor startup, linking and memory initialization, memory-mapped I/O, interrupts, peripheral configuration, deterministic scheduling, feedback control, and fault handling.
 
-Building each layer directly made the hardware/software boundary part of the design rather than an abstraction hidden behind a vendor HAL.
+Building each layer directly made the hardware/software boundary part of the design rather than an abstraction hidden underneath.
