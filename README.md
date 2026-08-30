@@ -1,233 +1,220 @@
-# Bare-Metal ARM Motor Controller
+# Bare-Metal ARM Cortex-M3 Motor Controller
 
-A bare-metal real-time motor control system built from scratch in C for an ARM Cortex-M3, running on the TI Stellaris LM3S6965 platform in QEMU.
+A bare-metal real-time motor-control system built from scratch in C for an ARM Cortex-M3, running on the QEMU-emulated TI Stellaris LM3S6965EVB.
 
-The project implements the firmware stack without an operating system, RTOS, standard library, or vendor HAL - including startup code, memory initialization, interrupt handling, peripheral drivers, PWM control, and closed-loop motor speed control.
+The project implements the firmware stack from reset vector to closed-loop control without an operating system, RTOS, HAL, or runtime. It includes custom startup code, memory layout, MMIO peripheral drivers, interrupt-driven timing, PWM and GPIO motor control, UART commands and telemetry, PID speed control, and latched safety faults.
 
-## Current Features
+## Features
 
-- Custom ARM Cortex-M3 startup code and interrupt vector table
-- Custom linker script defining Flash and SRAM layout
-- `.data` initialization from Flash to RAM
-- `.bss` zero initialization
-- Memory-mapped peripheral drivers written directly against hardware registers
-- Interrupt-driven UART RX with polling TX
-- UART receive ring buffer
-- 1 ms hardware timer interrupt
+- Bare-metal ARM Cortex-M3 firmware
+- Custom vector table and reset handler
+- Custom linker script and FLASH/RAM initialization
+- Memory-mapped peripheral drivers
+- Interrupt-driven 1 ms hardware timer
 - 20 kHz PWM motor output
-- GPIO-based motor direction control
-- Signed motor command interface (`-100` to `+100`)
-- Fixed-rate 100 Hz closed-loop control task
-- Software motor/plant model for QEMU feedback
-- PID speed controller using integer arithmetic
-- Output saturation and integral anti-windup
-- Runtime target-speed changes
+- GPIO-based bidirectional motor control
+- 100 Hz closed-loop speed controller
+- Integer PID with saturation and anti-windup
+- UART command interface and telemetry
+- Emergency-stop handling
+- Overspeed detection
+- Latched faults with explicit recovery
+- Missed real-time deadline detection
 
 ## Architecture
 
-The system is organized into hardware-facing drivers, control logic, and a simulated plant:
+The control path is:
 
-    +-------------------+
-    |   Target Speed    |
-    +---------+---------+
-              |
-              v
-    +-------------------+
-    |  PID Controller   |
-    |    control.c      |
-    +---------+---------+
-              |
-         -100 ... +100
-              |
-       +------+------+
-       |             |
-       v             v
-    +--------+   +-------------+
-    | Motor  |   | Motor Model |
-    |  HAL   |   |   (QEMU)    |
-    +---+----+   +------+------+
-        |               |
-     PWM + GPIO          |
-                        RPM
-                         |
-                         +------> feedback to controller
+    UART setpoint
+         |
+         v
+    PID Controller
+         |
+         v
+    Motor HAL ------> PWM + Direction GPIO
+         |
+         v
+    Motor Model
+         |
+         v
+    Measured Speed
+         |
+         +----------> PID feedback
 
-`motor.c` contains the hardware-facing motor interface. It converts a signed motor command into PWM magnitude and GPIO direction.
+A hardware timer generates a 1 ms system tick. The main loop uses that timebase to schedule the control loop every 10 ms (100 Hz).
 
-`motor_model.c` represents the physical motor and encoder that are unavailable in QEMU. It converts the applied motor command into simulated RPM with a simple first-order response.
-
-`control.c` compares the target speed against measured speed and adjusts the motor command using feedback.
+Interrupt handlers are kept minimal. Control, safety checking, command parsing, and telemetry execute outside interrupt context.
 
 ## Bare-Metal Startup
 
-The firmware boots directly on the Cortex-M3 without an operating system or runtime.
+The firmware boots without an operating system or standard runtime.
 
-The custom startup path:
+The startup path:
 
-1. Loads the initial stack pointer from the interrupt vector table.
-2. Enters `Reset_Handler`.
-3. Copies initialized `.data` from its load address in Flash to its runtime address in SRAM.
-4. Zero-initializes `.bss`.
-5. Calls `main()`.
+1. Cortex-M3 loads the initial stack pointer and reset vector.
+2. `Reset_Handler` copies initialized `.data` from FLASH to SRAM.
+3. `.bss` is zero-initialized.
+4. Execution enters `main()`.
 
-Memory layout:
+The custom linker script defines a 256 KB FLASH region and 64 KB SRAM region and places the vector table, program code, initialized data, and zero-initialized data explicitly.
 
-    Flash: 0x00000000 - 256 KB
-    SRAM:  0x20000000 - 64 KB
+## Motor Control
 
-The initial stack pointer is placed at the top of SRAM (`0x20010000`).
+The motor interface separates hardware-facing control from the feedback controller.
 
-## Peripheral Drivers
+The motor HAL converts signed controller output into:
 
-### UART
+- Output magnitude -> PWM duty cycle
+- Output sign -> GPIO direction
 
-UART0 is controlled directly through memory-mapped registers.
+The PWM driver is configured for a 20 kHz output.
 
-RX is interrupt-driven: incoming characters generate a UART interrupt and are placed into a software ring buffer. TX currently uses polling.
+The controller accepts speed targets between:
 
-### Timer
+    -3000 RPM and +3000 RPM
 
-Timer0 generates a periodic interrupt every 1 ms.
+Values outside this range are clamped.
 
-The interrupt handler increments a global tick counter while higher-level scheduling remains outside the ISR.
+## Closed-Loop Controller
 
-The closed-loop controller runs every 10 ticks, producing a deterministic 100 Hz control loop.
+Speed control runs at 100 Hz using an integer PID controller.
 
-### PWM
+Each iteration computes:
 
-The PWM driver is configured for a 20 kHz motor-control signal.
+    error = target_speed - measured_speed
 
-With a 12 MHz system clock and `/2` PWM clock divider:
+and applies proportional, integral, and derivative terms before clamping the resulting motor command to:
 
-    PWM clock = 6 MHz
-    6,000,000 / 20,000 = 300 ticks
+    -100% <= output <= +100%
 
-Therefore:
+The controller includes saturation-aware integral anti-windup and suppresses derivative kick during initialization.
 
-    LOAD = 299
+## Real-Time Scheduling
 
-Duty cycle is controlled by updating the PWM comparator.
+The control loop runs every 10 ms using the millisecond hardware-timer timebase.
 
-### Motor HAL
+Rather than replaying multiple stale controller iterations when execution falls behind, the scheduler detects skipped periods, advances to the current timing phase, and executes one current control iteration.
 
-The motor interface accepts signed commands:
+Missed periods are recorded through a deadline counter.
 
-    +100 = full-power forward
-       0 = stopped
-    -100 = full-power reverse
+Normal QEMU validation produced:
 
-Command sign controls a GPIO direction pin while command magnitude controls PWM duty cycle.
+    Control frequency:          100 Hz
+    Missed control deadlines:  0
 
-## Closed-Loop Speed Control
+## Performance
 
-The project initially used open-loop motor commands, where software directly selected motor power without knowing the resulting speed.
+For a 1500 RPM steady-state target:
 
-The current controller instead accepts a target speed:
+    Observed speed:             ~1495-1505 RPM
+    Steady-state error:         ~±5 RPM
+    Relative error:             ~0.33%
 
-    target speed
-         |
-         v
-    target - measured
-         |
-         v
-       error
-         |
-         v
-        PID
-         |
-         v
-    motor command
-         |
-         v
-       motor
-         |
-         +---- measured speed ----+
+For a 1500 -> 2500 RPM step:
 
-The controller currently runs at 100 Hz.
+    Final speed:                ~2499-2501 RPM
+    Final error:                ~±1 RPM
+    Time to enter ±1% band:     2.10 s
+    Missed deadlines:           0
 
-### PID Controller
+The controller also successfully performs full bidirectional reversals, including +2500 RPM -> -1500 RPM.
 
-The controller contains proportional, integral, and derivative terms using integer arithmetic rather than floating point.
+## Safety
 
-The proportional term reacts to current error.
+The firmware implements latched safety states:
 
-The integral term accumulates past error, allowing the controller to eliminate the steady-state error observed with proportional-only control.
+    FAULT_NONE
+    FAULT_OVERSPEED
+    FAULT_EMERGENCY_STOP
 
-The derivative term responds to changes in error and includes special handling for the first control iteration to prevent a startup derivative spike.
+An emergency stop immediately:
 
-The controller also implements output saturation and anti-windup so the integral term does not continue growing when the actuator is already saturated.
+1. Sets hardware motor output to zero.
+2. Sets the simulated plant command to zero.
+3. Resets PID state and target speed.
+4. Latches the emergency-stop fault.
 
-## QEMU Motor Simulation
+While faulted, normal controller execution is blocked.
 
-QEMU emulates the Cortex-M3 CPU, memory, interrupts, timers, UART, and GPIO used by the firmware.
+Faults require an explicit clear command. Clearing a fault leaves the target at 0 RPM, preventing the motor from unexpectedly restarting with a previous setpoint.
 
-It does not emulate the LM3S6965 PWM peripheral or a physical motor/encoder.
+Overspeed protection uses a 3200 RPM safety threshold and was validated using debugger fault injection.
 
-For that reason, the project separates the real hardware-facing motor HAL from a software plant model.
+## UART Interface
 
-The model currently assumes a maximum motor speed of 3000 RPM and maps motor commands from `-100` to `+100` onto the corresponding target motor speed. Motor inertia is approximated by moving the simulated speed toward that value on each update.
+Commands can be issued while the controller is running:
 
-This allows the complete real-time feedback architecture to be developed and tested while preserving a hardware abstraction that can later be connected to a physical motor and encoder.
+    s <rpm>     Set target speed
+    x           Emergency stop
+    c           Clear fault
+
+Example:
+
+    s 2500
+
+Telemetry reports:
+
+    target
+    measured speed
+    control error
+    controller output
+    safety state
+    missed control deadlines
 
 ## Validation
 
-The firmware has been tested through QEMU and ARM GDB.
+The firmware was tested for:
 
-Validated behavior includes:
+- Positive and negative speed commands
+- 1500 -> 2500 RPM step response
+- +2500 -> -1500 RPM reversal
+- ±3000 RPM target clamping
+- PID saturation and anti-windup
+- Emergency-stop activation
+- Latched fault behavior
+- Safe fault recovery
+- Overspeed fault injection
+- Real-time deadline tracking
 
-- Cortex-M3 startup and memory initialization
-- Timer interrupt execution
-- UART interrupt handling
-- GPIO motor-direction control
-- Fixed-rate 100 Hz controller execution
-- Proportional, integral, and derivative controller state
-- Integral anti-windup
-- Runtime target-speed changes
-- Closed-loop convergence
+## QEMU and Hardware Model
 
-In one target-step test, the controller was allowed to settle near 1500 RPM before the target was changed at runtime to 2500 RPM.
+QEMU emulates the ARM Cortex-M3 processor and the LM3S6965EVB platform, allowing the firmware's startup path, memory accesses, UART, timers, interrupts, NVIC behavior, and GPIO control to execute against emulated hardware.
 
-After settling:
+QEMU does not provide a physical motor or encoder, so the closed-loop plant and speed feedback are implemented with a software motor model.
 
-    Target speed:     2500 RPM
-    Simulated speed:  2463 RPM
-    Error:              37 RPM
-    Controller output:  82%
+The PWM driver is implemented against the LM3S6965 peripheral registers, but QEMU does not fully emulate the board's PWM peripheral. Physical PWM waveform timing and motor behavior therefore require validation on real hardware.
 
-The expected steady-state motor command for the model at 2500 RPM is approximately 83%, closely matching the controller output.
+This distinction keeps the project focused on real bare-metal firmware architecture while avoiding claims about physical hardware behavior that cannot be measured in QEMU.
 
-## Hardware Validation
+## Build
 
-The PWM implementation follows the LM3S6965 register interface, but QEMU does not emulate the PWM peripheral.
+Requires the ARM GNU Toolchain and QEMU.
 
-Therefore PWM waveform generation has not been electrically validated.
+Build:
 
-On physical hardware, the next validation steps would include:
+    arm-none-eabi-gcc -g -mcpu=cortex-m3 -mthumb -nostdlib -T linker.ld \
+        startup.c main.c uart.c timer.c pwm.c motor.c motor_model.c \
+        control.c command.c telemetry.c safety.c -o firmware.elf
 
-- Measuring the 20 kHz PWM waveform with an oscilloscope or logic analyzer
-- Verifying duty-cycle changes
-- Connecting a motor driver and motor
-- Replacing the software plant with encoder feedback
-- Measuring real control-loop timing and jitter
+Run:
 
-## Project Status
+    qemu-system-arm -M lm3s6965evb -kernel firmware.elf -nographic
 
-Completed:
+Debug:
 
-- Bare-metal startup and linker configuration
-- UART driver
-- Timer interrupts
-- PWM driver
-- Motor hardware abstraction
-- Simulated motor feedback
-- Closed-loop PID speed control
-- Anti-windup and output saturation
-- Runtime target-step validation
+    qemu-system-arm -M lm3s6965evb -kernel firmware.elf \
+        -nographic -S -gdb tcp::1234
 
-In progress:
+Then connect with:
 
-- UART command interface and telemetry
-- Fault handling and safety
-- Real-time architecture cleanup
-- Timing benchmarks and final validation
-- Final documentation
+    arm-none-eabi-gdb firmware.elf
+
+and:
+
+    target remote :1234
+
+## What I Learned
+
+This project was built to understand what sits underneath embedded frameworks and RTOS abstractions: processor startup, linking and memory initialization, memory-mapped I/O, interrupts, peripheral configuration, deterministic scheduling, feedback control, and fault handling.
+
+Building each layer directly made the hardware/software boundary part of the design rather than an abstraction hidden behind a vendor HAL.
