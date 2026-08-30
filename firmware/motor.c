@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include "motor.h"
+#include "pwm.h"
 
 #define GPIO_PORTF_BASE 0x40025000
 #define GPIODATA (*(volatile uint32_t *)(GPIO_PORTF_BASE + 0x008))  // can GPIO send?
@@ -6,10 +8,7 @@
 #define GPIOAFSEL (*(volatile uint32_t *)(GPIO_PORTF_BASE + 0x420)) // GPIO alternate function
 #define GPIODEN (*(volatile uint32_t *)(GPIO_PORTF_BASE + 0x51C))   // GPIO alternate function
 
-void pwm_set_duty(int percent);
-void pwm_init(void);
-
-void motor_init() {
+void motor_init(void) {
   pwm_init();
   GPIOAFSEL &= ~(1U << 1); // PF1 uses normal GPIO, not alternate hardware
   GPIODIR |= (1U << 1);    // Pin sends data, doesn't receive

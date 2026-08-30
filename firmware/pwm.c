@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "pwm.h"
 
 #define GPIO_PORTF_BASE 0x40025000
 #define GPIOAFSEL (*(volatile uint32_t *)(GPIO_PORTF_BASE + 0x420)) // GPIO alternate function
@@ -16,7 +17,7 @@
 #define RCGC0 (*(volatile uint32_t *)(SYSTEM_CONTROL_BASE + 0x100)) // Controls clocks for peripherals
 #define RCGC2 (*(volatile uint32_t *)(SYSTEM_CONTROL_BASE + 0x108))
 
-void pwm_init() {
+void pwm_init(void) {
   RCGC0 |= (1U << 20); // Enable clock for PWM
   RCGC2 |= (1U << 5);  // Enable clock for GPIO Port F
 

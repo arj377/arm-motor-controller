@@ -1,6 +1,6 @@
-int motor_model_get_speed(void);
-void motor_model_set_command(int command);
-void motor_set_output(int percent);
+#include "control.h"
+#include "motor.h"
+#include "motor_model.h"
 
 static int first_update = 1; // For derivative calculation
 
@@ -23,6 +23,7 @@ static int previous_error = 0;
 static int error = 0;
 static int output = 0;
 
+
 void control_set_target(int target) {
     if (target > 3000) {
         target_speed = 3000;
@@ -33,9 +34,9 @@ void control_set_target(int target) {
     }
 }
 
-void control_update() {
+void control_update(void) {
     int current_speed = motor_model_get_speed();
-
+    
     error = target_speed - current_speed;
     P = error / Kp_divisor;
 
@@ -73,14 +74,28 @@ void control_update() {
     first_update = 0;
 }
 
-int control_get_target_speed() {
+void control_reset(void) {
+    target_speed = 0;
+    integral = 0;
+    previous_error = 0;
+    error = 0;
+    output = 0;
+
+    P = 0;
+    I = 0;
+    D = 0;
+
+    first_update = 1;
+}
+
+int control_get_target_speed(void) {
     return target_speed;
 }
 
-int control_get_output() {
+int control_get_output(void) {
     return output;
 }
 
-int control_get_error() {
+int control_get_error(void) {
     return error;
 }

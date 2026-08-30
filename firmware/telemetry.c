@@ -1,15 +1,12 @@
+#include <stdint.h>
+
+#include "telemetry.h"
+#include "control.h"
+#include "motor_model.h"
 #include "safety.h"
+#include "uart.h"
 
-int control_get_target_speed(void);
-int motor_model_get_speed(void);
-int control_get_error(void);
-int control_get_output(void);
-
-void uart_puts(char *s);
-void uart_putint(int num);
-
-
-void telemetry_print() {  // target=1500 speed=1455 error=45 output=49
+void telemetry_print(void) {  // target=1500 speed=1455 error=45 output=49
     uart_puts("target = ");
     uart_putint(control_get_target_speed());
     uart_puts(" | ");
@@ -28,5 +25,9 @@ void telemetry_print() {  // target=1500 speed=1455 error=45 output=49
 
     uart_puts("safety state = ");
     uart_putint(get_safety_state()); // 0 = FAULT_NONE, 1 = FAULT_OVERSPEED, 2 = FAULT_EMERGENCY_STOP
+    uart_puts(" | ");
+
+    uart_puts("missed deadlines = ");
+    uart_putint(get_missed_control_deadlines());
     uart_puts("\n");
 }

@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "uart.h"
+
 #define UART0_BASE 0x4000C000
 #define UARTDR (*(volatile uint32_t *)(UART0_BASE + 0x000))   // Data Register
 #define UARTFR (*(volatile uint32_t *)(UART0_BASE + 0x018))   // Status Flags Register

@@ -1,5 +1,10 @@
 #include <stdbool.h>
 
+#include "safety.h"
+#include "control.h"
+#include "motor.h"
+#include "motor_model.h"
+
 #define MAX_SAFE_SPEED_RPM 3200
 
 enum SAFETY_STATE {
@@ -10,12 +15,7 @@ enum SAFETY_STATE {
 
 static enum SAFETY_STATE safety_state = FAULT_NONE;
 
-void motor_model_set_command (int val);
-void control_set_target(int val);
-void motor_set_output(int val);
-int motor_model_get_speed(void);
-
-bool safety_fault_active() {
+bool safety_fault_active(void) {
 
     if (safety_state == FAULT_NONE) {
         return false;
@@ -24,26 +24,26 @@ bool safety_fault_active() {
     return true;
 }
 
-void safety_update() {
+void safety_update(void) {
     if (safety_state == FAULT_NONE) {
         int cur_speed = motor_model_get_speed();
         if (cur_speed > MAX_SAFE_SPEED_RPM || cur_speed < -MAX_SAFE_SPEED_RPM) {
             safety_state = FAULT_OVERSPEED; // Latched fault
             motor_set_output(0);
             motor_model_set_command(0);
-            control_set_target(0);
+            control_reset();
         }
     }
 }
 
-void emergency_stop() {
+void emergency_stop(void) {
     safety_state = FAULT_EMERGENCY_STOP;
     motor_model_set_command(0);  // Simulated plant command = 0
     motor_set_output(0); // physical/HAL command = 0
-    control_set_target(0); // Controller no longer wants movement
+    control_reset();; // Controller no longer wants movement
 }
 
-void clear_fault() {
+void clear_fault(void) {
     int speed = motor_model_get_speed();
     if (speed <= MAX_SAFE_SPEED_RPM && speed >= -MAX_SAFE_SPEED_RPM) {
         safety_state = FAULT_NONE;
@@ -51,6 +51,6 @@ void clear_fault() {
     // Else stay latched
 }
 
-enum SAFETY_STATE get_safety_state() {
+enum SAFETY_STATE get_safety_state(void) {
     return safety_state;
 }

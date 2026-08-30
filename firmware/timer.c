@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "timer.h"
 
 #define TIMER0_BASE 0x40030000
 #define GPTMCFG (*(volatile uint32_t *)(TIMER0_BASE + 0x000))   // Timer config
@@ -16,7 +17,7 @@
 
 volatile uint32_t timer_ticks = 0;
 
-void timer_init() {
+void timer_init(void) {
   RCGC1 |= (1U << 16); // Enable the peripheral clock for Timer0
 
   GPTMCTL &= ~(1U);  // Disable TimerA
@@ -29,7 +30,7 @@ void timer_init() {
   EN0 |= (1U << 19); // Allow Timer0A interrupt 19 through to the CPU
 }
 
-void Timer0_Handler() {
+void Timer0_Handler(void) {
   GPTMICR = 1U;  // Clear this timeout
   timer_ticks++; // 1000 ticks = 1 second
 }

@@ -1,4 +1,7 @@
 #include <stdbool.h>
+#include "command.h"
+#include "control.h"
+#include "safety.h"
 
 enum STATE {
     WAIT_COMMAND,
@@ -6,17 +9,9 @@ enum STATE {
     READ_VALUE
 };
 
-void control_set_target(int target);
-
 static enum STATE state = WAIT_COMMAND;
 static int value = 0;
 static bool positive = true;
-
-void uart_puts(char* c);
-void uart_putint(int num);
-
-void emergency_stop(void);
-void clear_fault(void);
 
 void command_process_char(char c) {
     switch(state) {

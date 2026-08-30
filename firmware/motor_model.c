@@ -16,11 +16,11 @@ void motor_model_set_command(int motor_value) {
     desired_speed = (MAX_SPEED_RPM * motor_command) / 100;
 }
 
-void motor_model_update() {
+void motor_model_update(void) {
     int error = desired_speed - current_speed;
     current_speed += error / 10; 
 }
 
-int motor_model_get_speed() {
+int motor_model_get_speed(void) {
     return current_speed;
 }

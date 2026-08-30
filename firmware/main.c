@@ -1,35 +1,19 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// Initalization
-void uart_init(void);
-void timer_init(void);
-void motor_init(void);
-extern volatile uint32_t timer_ticks;
+#include "command.h"
+#include "control.h"
+#include "motor.h"
+#include "motor_model.h"
+#include "safety.h"
+#include "telemetry.h"
+#include "timer.h"
+#include "uart.h"
 
-// Outputting characters
-void uart_putc(char c);
-void uart_puts(char *s);
-int uart_getc(void);
+#define CONTROL_PERIOD_MS 10
+#define TELEMETRY_PERIOD_MS 1000
 
-// Adjusting motor
-void motor_set_output(int percent);
-
-// Control system
-void control_set_target(int target);
-void control_update(void);
-void motor_model_update(void);
-
-// Parser
-void command_process_char(char c);
-
-void telemetry_print(void);
-
-// Safety
-bool safety_fault_active(void);
-void safety_update(void);
-void emergency_stop();
-void clear_fault();
+static uint32_t missed_control_deadlines = 0;
 
 int main(void) {
   uint32_t last_control = 0;
@@ -41,7 +25,7 @@ int main(void) {
 
   control_set_target(1500);
 
-  uart_puts("Hello");
+  uart_puts("motor controller ready\n");
 
   while (1) {
     int c = uart_getc();
@@ -51,17 +35,31 @@ int main(void) {
       command_process_char(c);
     }
 
-    if (timer_ticks - last_telemetry >= 5000) { // Adjustable based on demands
-      telemetry_print();
-      last_telemetry += 5000;
+    if (timer_ticks - last_telemetry >= TELEMETRY_PERIOD_MS) {
+        uint32_t elapsed = timer_ticks - last_telemetry;
+        uint32_t periods = elapsed / TELEMETRY_PERIOD_MS;
+
+        last_telemetry += periods * TELEMETRY_PERIOD_MS;
+        telemetry_print();
     }
-    if (timer_ticks - last_control >= 10) {
-      motor_model_update();
-      safety_update();
-      if (!safety_fault_active()) {
-          control_update();
-      }
-      last_control += 10;
+    if (timer_ticks - last_control >= CONTROL_PERIOD_MS) {
+        uint32_t elapsed = timer_ticks - last_control;
+        uint32_t periods = elapsed / CONTROL_PERIOD_MS;
+        if (periods > 1) {
+          missed_control_deadlines += periods - 1;
+        }
+        last_control += periods * CONTROL_PERIOD_MS;
+
+        motor_model_update();
+        safety_update();
+
+        if (!safety_fault_active()) {
+            control_update();
+        }
     }
   }
+}
+
+uint32_t get_missed_control_deadlines(void) {
+    return missed_control_deadlines;
 }
